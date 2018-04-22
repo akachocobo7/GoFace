@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>GoFace</title>
+    <script src="clmtrackr.js"></script>
+    <script>
+        var canvas, context;    // キャンバス
+        var overCanvas, overContext;   // キャンバス
+        var tracker;    // 検出トラッカー
+        var cntDetect = 0;  // 検出試行回数
+        var maxDetect = 100;  // 試行回数上限
+        var request = null; // 描画リクエスト
+        var image = new Image();    // 顔画像
+        var accessory = new Image();    // アクセサリ画像
+        accessory.src = "go.png";   // 合成するアクセサリ画像のファイル
+
+        function init() {
+            // キャンパスの取得
+            canvas = document.getElementById("image");
+            context = canvas.getContext("2d");
+            overCanvas = document.getElementById("overlay");
+            overContext = overCanvas.getContext("2d");
+
+            // 検出トラッカーの生成
+            tracker = new clm.tracker();
+            tracker.init();
+        }
+
+        function loadImage(e) {
+            // 選択したファイルのURLを生成
+            var fileurl = URL.createObjectURL(e.files[0]);
+            
+            // 画像の読み込み
+            image.src = fileurl;
+            image.onload = function() {
+                // リセット
+                tracker.stop();
+                tracker.reset();
+                cancelAnimationFrame(request);
+                document.getElementById("status").innerHTML = "";
+                document.getElementById("progress").value = 0;
+
+                // 描画
+                drawImage();
+            };
+        }
+
+        function drawImage() {
+            // キャンパスをクリア
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            overContext.clearRect(0, 0, overCanvas.width, overCanvas.height);
+
+            // キャンパスにあわせて画像を描画
+            var dx, dy, dw, dh;
+            
+            if(image.width > image.height){
+                // 横長画像
+                dw = canvas.width;
+                dh = dw * image.height / image.width;
+                dx = 0;
+                dy = (canvas.height - dh) / 2;
+            }
+            else{
+                // 縦長画像
+                dw = canvas.height * image.width / image.height;
+                dh = canvas.height;
+                dx = (canvas.width - dw) / 2;
+                dy = 0;
+            }
+            context.drawImage(image, 0, 0, image.width, image.height, dx, dy, dw, dh);
+        }
+
+        function startTrack() {
+            // 検出開始
+            cntDetect = 0;
+            tracker.start(canvas);
+            document.getElementById("status").innerHTML = "検出中";
+            detect();
+        }
+
+        function detect() {
+            // 更新
+            cntDetect++;
+            request = requestAnimationFrame(detect);
+
+            // 検出試行中のモデルの描画
+            overContext.clearRect(0, 0, overCanvas.width, overCanvas.height);
+            tracker.draw(overCanvas);
+
+            // 検出判断
+            if(tracker.getConvergence() < 0.5){
+                // 検出成功
+                tracker.stop();
+                cancelAnimationFrame(request);
+                document.getElementById("status").innerHTML = "検出完了";
+                cntDetect = 100;
+                // アクセサリの描画
+                drawAccessory();
+            }
+            else if(cntDetect >= maxDetect){
+                tracker.stop();
+                cancelAnimationFrame(request);
+                document.getElementById("status").innerHTML = "検出失敗";
+                overContext.clearRect(0, 0, overCanvas.width, overCanvas.height);
+            }
+
+            // 進捗表示
+            document.getElementById("progress").value = cntDetect;
+        }
+
+        function drawAccessory() {
+            // オーバーレイキャンバスのクリア
+            overContext.clearRect(0, 0, overCanvas.width, overCanvas.height);
+
+            // 顔のポイント
+            var pos = tracker.getCurrentPosition();
+
+            // 顔の大きさ
+            var dw = Math.abs(pos[0][0] - pos[14][0]) * 1.5;
+            var dh = Math.abs(pos[62][1] - pos[7][1]) * 2.5;
+
+            // 鼻の位置合わせ
+            var dx = pos[62][0] - dw / 2 + 4;
+            var dy = pos[62][1] - dh + dh / 8 + 32;
+
+            // アクセサリ画像の描画
+            var w = accessory.width;
+            var h = accessory.height;
+            overContext.drawImage(accessory, 0, 0, w, h, dx, dy, dw, dh);
+        }
+    </script>
+    <style>
+        canvas {border: solid thin #CCCCCC;}
+        #container {
+            position: relative;
+        }
+        #overlay {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+        }
+    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body onload="init()">
+    <p> 顔検出 </p>
+    画像ファイル:
+    <input type="file" accept="image/jpeg, image/png" onchange="loadImage(this);">
+    <input type="button" value="検出" onclick="startTrack()">
+    <progress id="progress" value="0" max="100"></progress>
+    <span id="status"></span>
+    <hr>
+    <div id="container">
+        <canvas id="image" width="640" height="480"></canvas>
+        <canvas id="overlay" width="640" height="480"></canvas>
+    </div>
+</body>
+</html>
